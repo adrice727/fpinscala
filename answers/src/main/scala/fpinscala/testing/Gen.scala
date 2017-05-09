@@ -10,7 +10,24 @@ import java.util.concurrent.{Executors, ExecutorService}
 import language.postfixOps
 import language.implicitConversions
 
-case class Prop(run: (TestCases, RNG) => Result)
+case class Prop(run: (TestCases, RNG) => Result) {
+  def &&(p: Prop): Prop = Prop {
+    (n, rng) => {
+      run(n, rng) match {
+        case Passed => p.run(n, rng)
+        case f => f
+      }
+    }
+  }
+  def ||(p: Prop): Prop =  Prop {
+    (n, rng) => {
+      run(n, rng) match {
+        case Passed => Passed
+        case _ => p.run(n, rng)
+      }
+    }
+  }
+}
 
 object Prop {
   type SuccessCount = Int
@@ -32,15 +49,18 @@ object Prop {
 
   def buildMsg[A](s: A, e: Exception): String =
     s"test case: $s\n" +
-    s"generated an exception: ${e.getMessage}\n" +
-    s"stack tract: \n ${e.getStackTrace.mkString("\n")}"
+      s"generated an exception: ${e.getMessage}\n" +
+      s"stack tract: \n ${e.getStackTrace.mkString("\n")}"
 
   def forAll[A](as: Gen[A])(f: A => Boolean): Prop = Prop {
-    (n, rng) => randomStream(as)(rng).zip(Stream.from(0)).take(n).map {
-      case (a, i) => try {
-        if (f(a)) Passed else Falsified(a.toString, i)
-      } catch { case e: Exception => Falsified(buildMsg(a, e), i)}
-    }.find(_.isFalsified).getOrElse(Passed)
+    (n, rng) =>
+      randomStream(as)(rng).zip(Stream.from(0)).take(n).map {
+        case (a, i) => try {
+          if (f(a)) Passed else Falsified(a.toString, i)
+        } catch {
+          case e: Exception => Falsified(buildMsg(a, e), i)
+        }
+      }.find(_.isFalsified).getOrElse(Passed)
   }
 }
 
@@ -51,7 +71,7 @@ case class Gen[A](sample: State[RNG, A]) {
 
   def listOfN(size: Gen[Int]): Gen[List[A]] = size flatMap (n => this.listOfN(Gen.unit(n)))
 
-//  def listOfN(size: Int): Gen[List[A]] = Gen.listofN(n, this)
+  //  def listOfN(size: Int): Gen[List[A]] = Gen.listofN(n, this)
 }
 
 object Gen {

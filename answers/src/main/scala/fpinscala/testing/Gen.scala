@@ -104,7 +104,7 @@ case class SGen[+A](g: Int => Gen[A]) {
   def **[B](s2: SGen[B]): SGen[(A, B)] = SGen(n => apply(n) ** s2(n))
 }
 
-case class Gen[A](sample: State[RNG, A]) {
+case class Gen[+A](sample: State[RNG, A]) {
   def map[B](f: A => B): Gen[B] = Gen(sample.map(f))
 
   def flatMap[B](f: A => Gen[B]): Gen[B] = {
@@ -118,13 +118,10 @@ case class Gen[A](sample: State[RNG, A]) {
 
   def **[B](g: Gen[B]): Gen[(A, B)] =
     (this map2 g) ((_, _))
-//
-//  def listOfN(size: Gen[Int]): Gen[List[A]] = size flatMap (n => this.listOfN(Gen.unit(n)))
-////  def listOfN(size: Int): Gen[List[A]] = Gen.listofN(n, this)
+
 
   /* A method alias for the function we wrote earlier. */
-  def listOfN(size: Int): Gen[List[A]] =
-    Gen.listOfN(size, this)
+  def listOfN(size: Int): Gen[List[A]] = Gen.listOfN(size, this)
 
   /* A version of `listOfN` that generates the size to use dynamically. */
   def listOfN(size: Gen[Int]): Gen[List[A]] =
@@ -145,9 +142,9 @@ object Gen {
 
   def boolean: Gen[Boolean] = Gen(State(RNG.boolean))
 
-  def listofN[A](n: Int, g: Gen[A]): Gen[List[A]] = Gen(State.sequence(List.fill(n)(g.sample)))
+  def listOfN[A](n: Int, g: Gen[A]): Gen[List[A]] = Gen(State.sequence(List.fill(n)(g.sample)))
 
-  def listOf[A](g: Gen[A]): SGen[List[A]] = SGen(n => g.listofN(n))
+  def listOf[A](g: Gen[A]): SGen[List[A]] = SGen(n => g.listOfN(n))
 
   def union[A](g1: Gen[A], g2: Gen[A]): Gen[A] = boolean.flatMap(b => if (b) g1 else g2)
 

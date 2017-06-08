@@ -15,11 +15,14 @@ trait Parsers[ParseError, Parser[+ _]] {
 
   def char(c: Char): Parser[Char] = string(c.toString) map (_.charAt(0))
   def or[A](s1: Parser[A], s2: => Parser[A]): Parser[A]
-  def map[A, B](a: Parser[A])(f: A => B): Parser[B] = f(a)
+  def map[A, B](a: Parser[A])(f: A => B): Parser[B] = p.flatMap(a => succeed(f(a)))
   def map2[A, B, C](p: Parser[A], p2: => Parser[B])(f: (A, B) => C): Parser[C] =
-    product(p, p2) map (f.tupled)
+    for { a <- p; b <- p2 } yield f(a,b)
+
 
   def flatMap[A,B](p: Parser[A])(f: A => Parser[B]): Parser[B]
+
+  implicit def regex(r: Regex): Parser[String]
 
   def many[A](p: Parser[A]): Parser[List[A]] =
     map2(p, many(p))(_ :: _ ) or succeed(List())
@@ -27,10 +30,7 @@ trait Parsers[ParseError, Parser[+ _]] {
   def many1[A](p: Parser[A]): Parser[List[A]]
 
   def product[A, B](p: Parser[A], p2: => Parser[B]): Parser[(A, B)] =
-    for {
-      a <- p
-      b <- p2
-    } yield (a, b)
+    flatMap(p)(a => map(p2)(b => (a,b)))
 
   def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]]
     if (n <= 0) succeed(List())

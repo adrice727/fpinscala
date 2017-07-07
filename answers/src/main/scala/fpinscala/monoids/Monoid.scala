@@ -1,5 +1,7 @@
 package fpinscala.monoids
 
+import scala.annotation.tailrec
+
 trait Monoid[A] {
   def op(a1: A, a2: A): A
   def zero: A
@@ -64,22 +66,45 @@ object Monoid {
     as.foldLeft(m.zero)((acc, a) => m.op(acc, f(a)))
   }
 
-  def foldMap[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B = {
+  def foldRightViafoldMap[A, B](as: List[A])(z: B)(f: (A, B) => B): B = {
+    foldMap(as, endoMonoid[B])(f.curried)(z)
+  }
+
+  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B = {
     if (as.isEmpty)
       m.zero
     else if (as.length == 1)
       f(as(0))
     else {
       val (left, right) = as.splitAt(as.length / 2)
-      m.op(foldMap(left, m)(f), foldMap(right, m)(f))
+      m.op(foldMapV(left, m)(f), foldMapV(right, m)(f))
     }
   }
 
-  def foldRightViafoldMap[A, B](as: List[A])(z: B)(f: (A, B) => B): B = {
-    foldMap(as, endoMonoid[B])(f.curried)(z)
+  import fpinscala.parallelism.Nonblocking._
+  import fpinscala.parallelism.Nonblocking.Par._
+
+  def par[A](m: Monoid[A]): Monoid[Par[A]] = new Monoid[Par[A]] {
+    def zero = Par.unit(m.zero)
+    def op(a: Par[A], b: Par[A]): Par[A] = a.map2(b)(m.op)
   }
 
+  def parFoldMap[A, B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
+    Par.parMap(v)(f).flatMap { bs =>
+      foldMapV(bs, par(m))(b => Par.async(b))
+    }
 
+  def ordered(ints: IndexedSeq[Int]): Boolean = {
 
+    val a = Some((0, 0))
+    val o = optionMonoid
+    // Ordered Option => (
+    val orderedMon = new Monoid[Option[(Int, Int, Boolean)]] {
+      def op(o1: Option[(Int, Int, Boolean)], o2: Option[(Int, Int, Boolean)]) = ???
+      def zero = None
+    }
+
+    foldMapV(ints, orderedMon)(???)
+  }
 }
 

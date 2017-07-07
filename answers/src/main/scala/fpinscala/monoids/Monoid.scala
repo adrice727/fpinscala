@@ -98,13 +98,41 @@ object Monoid {
 
     val a = Some((0, 0))
     val o = optionMonoid
-    // Ordered Option => (
+    // Ordered Option => (min, max, ordered)
     val orderedMon = new Monoid[Option[(Int, Int, Boolean)]] {
-      def op(o1: Option[(Int, Int, Boolean)], o2: Option[(Int, Int, Boolean)]) = ???
+      def op(o1: Option[(Int, Int, Boolean)], o2: Option[(Int, Int, Boolean)]) = (o1, o2) match {
+        case(Some((x1, y1, b1)), Some((x2, y2, b2))) => Some((x1 min x2, y1 max y2, b1 && b2 && y1 <= x2))
+        case (None, x) => x
+        case (x, None) => x
+      }
       def zero = None
     }
-
-    foldMapV(ints, orderedMon)(???)
+    foldMapV(ints, orderedMon)(i => Some((i, i, true))).map(_._3).getOrElse(true)
   }
+
+  sealed trait WC
+  case class Stub(chars: String) extends WC
+  case class Part(lStub: String, words: Int, rStub: String) extends WC
+
+  val wcMonoid: Monoid[WC] = new Monoid[WC] {
+    def op(a: WC, b: WC): WC = (a, b) match {
+      case(Stub(x), Stub(y)) => Stub(x + y)
+      case(Part(l,w,r), Stub(y)) => Part(l, w, r + y)
+      case(Stub(x), Part(l, w, r)) => Part(x + l, w, r)
+      case(Part(l1, w1, r1), Part(l2, w2, r2)) => Part(l1, w1 + (if ((r1 + l2).isEmpty) 0 else 1) + w2, r2)
+    }
+    def zero = Stub("")
+  }
+
+  def count(input: String): Int = {
+    def wc(c: Char): WC = if (c.isWhitespace) Part("", 0, "") else Stub(c.toString)
+    def unStub(s: String) = s.length min 1
+
+    foldMapV(input.toIndexedSeq, wcMonoid)(wc) match {
+      case Stub(x) => unStub(x)
+      case Part(l, w, r)  => unStub(l) + w + unStub(r)
+    }
+  }
+
 }
 

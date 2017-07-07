@@ -135,7 +135,7 @@ object Monoid {
   }
 }
 
-trait Foldable[F[_]] {
+sealed trait Foldable[F[_]] {
   def foldRight[A,B](as: F[A])(z: B)(f: (A, B) => B): B
   def foldLeft[A,B](as: F[A])(z: B)(f: (B, A) => B): B
   def foldMap[A,B](as: F[A])(f: A => B)(mb: Monoid[B]): B
@@ -160,4 +160,34 @@ object StreamFoldable extends Foldable[Stream] {
   def foldLeft[A,B](as: Stream[A])(z: B)(f: (B, A) => B): B = as.foldLeft(z)(f)
   def foldMap[A,B](as: Stream[A])(f: A => B)(mb: Monoid[B]) = as.foldLeft(mb.zero)((b,a) => mb.op(b, f(a)))
 }
+
+sealed trait Tree[+A]
+case class Branch[A](left: Tree[A], right: Tree[A]) extends Tree[A]
+case class Leaf[A](value: A) extends Tree[A]
+
+object TreeFoldable extends Foldable[Tree] {
+  def foldRight[A,B](as: Tree[A])(z: B)(f: (A, B) => B): B = as.foldRight(z)(f)
+  def foldLeft[A,B](as: Tree[A])(z: B)(f: (B, A) => B): B = as.foldLeft(z)(f)
+  def foldMap[A,B](as: Tree[A])(f: A => B)(mb: Monoid[B]): B = as match {
+    case Leaf(a) => f(a)
+    case Branch(l, r) => mb.op(foldMap(l)(f)(mb), foldMap(r)(f)(mb))
+  }
+}
+
+object OptionFoldable extends Foldable[Option] {
+  def foldRight[A,B](as: Option[A])(z: B)(f: (A, B) => B): B = as match {
+    case None => z
+    case Some(a) => f(a, z)
+  }
+  def foldLeft[A,B](as: Option[A])(z: B)(f: (B, A) => B): B = as match {
+    case None => z
+    case Some(a) => f(z, a)
+  }
+  def foldMap[A,B](as: Option[A])(f: A => B)(mb: Monoid[B]) = as match {
+    case None => mb.zero
+    case Some(a) => f(a)
+  }
+}
+
+
 

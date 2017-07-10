@@ -36,6 +36,12 @@ trait Monad[F[_]] extends Functor[F] {
     sequence(List.fill(n)(ma))
   def product[A,B](ma: F[A], mb: F[B]): F[(A,B)] =
     map2(ma, mb)((a,b) => (a,b))
+  def filterM[A](ms: List[A])(f: A => F[Boolean]): F[List[A]] = ms match {
+    case Nil => unit(Nil)
+    case h :: t => flatMap(f(h))(b =>
+      if (!b) filterM(t)(f)
+      else map(filterM(t)(f))(h :: _))
+  }
 }
 
 object Monad {
@@ -49,11 +55,11 @@ object Monad {
     def flatMap[A, B](ma: Gen[A])(f: A => Gen[B]): Gen[B] = ma flatMap f
   }
 
-  def parserMonad[P[+-]](p: Parsers[P]) = new Monad[P] {
+  def parserMonad[P[+_]](p: Parsers[P]) = new Monad[P] {
     def unit[A](a: => A) = p.succeed(a)
     def flatMap[A, B](ma: P[A])(f: A => P[B]): P[B] = p.flatMap(ma)(f)
   }
-
+  
   val optionMonad = new Monad[Option] {
     def unit[A](a: => A): Option[A] = Some(a)
     def flatMap[A, B](ma: Option[A])(f: A => Option[B]): Option[B] = ma flatMap f

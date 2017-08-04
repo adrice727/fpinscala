@@ -116,7 +116,7 @@ object Monad {
   // family of monads, one for each type `S`. One solution is to create a class
   // `StateMonads` that accepts the `S` type argument and then has a _type member_
   // for the fully applied `State[S, A]` type inside:
-  class StateMonads[S] {
+  class StateMonad[S] {
     type StateS[A] = State[S, A]
 
     // We can then declare the monad for the `StateS` type constructor:

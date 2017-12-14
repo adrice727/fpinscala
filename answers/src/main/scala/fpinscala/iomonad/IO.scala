@@ -128,6 +128,7 @@ object IO3 {
   sealed trait Console[A] {
     def toPar: Par[A]
     def toThunk: () => A
+    def toReader: ConsoleReader[A]
   }
 
   case object ReadLine extends Console[Option[String]] {
@@ -157,6 +158,10 @@ object IO3 {
     def apply[A](a: Console[A]) = a.toPar
   }
 
+  val consoleToReader = new (Console ~> ConsoleReader) {
+    def apply[A](a: Console[A]) = a.toReader
+  }
+
   def runFree[F[_], G[_]](free: Free[F, A])(t: F ~> G)(implicit G: Monad[G]) = {
     step(free) match {
       case Return(a)              => G.unit(a)
@@ -175,6 +180,10 @@ object IO3 {
     runFree[Console, Par, A](a)(consoleToPar)
   }
 
+  @annotation.tailrec
+  def runConsoleReader[A](io: ConsoleIO[A]): ConsoleReader[A] =
+    runFree[Console, ConsoleReader, A](io)(consoleToReader)
+
   implicit val function0Monad = new Monad[Function0] {
     def unit[A](a: => A) = () => a
     def flatMap[A, B](a: Function0[A])(f: A => Function0[B]) = { () =>
@@ -189,17 +198,63 @@ object IO3 {
     }
   }
 
-  def translate[F[_], G[_], A](f: Free[F, A])(fg: F ~> G): Free[G,A] = {
-    type FreeG[A] = Free[G,A]
+  def translate[F[_], G[_], A](f: Free[F, A])(fg: F ~> G): Free[G, A] = {
+    type FreeG[A] = Free[G, A]
     val t = new (F ~> FreeG) {
-      def apply[A](a: F[A]): Free[G,A] = Suspend { fg(a) }
+      def apply[A](a: F[A]): Free[G, A] = Suspend { fg(a) }
     }
     runFree(f)(t)(freeMonad[G])
   }
 
   def runConsole[A](a: Free[Console, A]): A = {
-    runTrampoline { translate(a)( new (Console ~> Function0) {
-      def apply[A](c: Console[A]) = c.toThunk
-    })}
+    runTrampoline {
+      translate(a)(new (Console ~> Function0) {
+        def apply[A](c: Console[A]) = c.toThunk
+      })
+    }
   }
+
+  import Console._
+
+  case class Buffers(in: List[String], out: Vector[String])
+
+  // A specialized state monad
+  case class ConsoleState[A](run: Buffers => (A, Buffers)) {
+    def map[B](f: A => B): ConsoleState[B] =
+      ConsoleState { s =>
+        val (a, s1) = run(s)
+        (f(a), s1)
+      }
+    def flatMap[B](f: A => ConsoleState[B]): ConsoleState[B] =
+      ConsoleState { s =>
+        val (a, s1) = run(s)
+        f(a).run(s1)
+      }
+  }
+  object ConsoleState {
+    implicit val monad = new Monad[ConsoleState] {
+      def unit[A](a: => A) = ConsoleState(bufs => (a, bufs))
+      def flatMap[A, B](ra: ConsoleState[A])(f: A => ConsoleState[B]) =
+        ra flatMap f
+    }
+  }
+
+  case class ConsoleReader[A](run: String => A) {
+    def map[B](f: A => B): ConsoleReader[B] = ConsoleReader(r => f(run(r)))
+    def flatMap[B](f: A => ConsoleReader[B]): ConsoleReader[B] =
+      ConsoleReader(r => f(run(r)).run(r))
+  }
+  object ConsoleReader {
+    implicit val monad = new Monad[ConsoleReader] {
+      def unit[A](a: => A) = ConsoleReader(_ => a)
+      def flatMap[A, B](ra: ConsoleReader[A])(f: A => ConsoleReader[B]) =
+        ra flatMap f
+    }
+  }
+
+  def runConsoleReader[A](io: ConsoleIO[A]): ConsoleReader[A] =
+    runFree[Console, ConsoleReader, A](io)(consoleToReader)
+
+  def runConsoleState[A](io: ConsoleIO[A]): ConsoleState[A] =
+    runFree[Console, ConsoleState, A](io)(consoleToState)
 }
